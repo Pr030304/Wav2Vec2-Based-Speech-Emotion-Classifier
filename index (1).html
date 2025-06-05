@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Audio Emotion Classifier</title>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap"
+    rel="stylesheet"
+  />
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    :root {
+      --primary-color: #007bff;
+      --secondary-color: #0056b3;
+      --bg-color: #f0f2f5;
+      --card-bg: #ffffff;
+      --text-color: #333;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: 'Roboto', sans-serif;
+      background: var(--bg-color);
+      color: var(--text-color);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+    }
+    .container {
+      width: 90%;
+      max-width: 800px;
+      background: var(--card-bg);
+      border-radius: 8px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+      padding: 2rem;
+    }
+    header {
+      text-align: center;
+      margin-bottom: 1.5rem;
+    }
+    header h1 {
+      font-weight: 500;
+      margin-bottom: 0.5rem;
+    }
+    header p {
+      color: var(--secondary-color);
+    }
+    .tabs {
+      display: flex;
+      justify-content: center;
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+    .tab {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 4px;
+      background: var(--primary-color);
+      color: #fff;
+      cursor: pointer;
+      transition: background 0.3s;
+      font-size: 1rem;
+    }
+    .tab:hover {
+      background: var(--secondary-color);
+    }
+    .tab.active {
+      background: var(--secondary-color);
+    }
+    .section {
+      display: none;
+    }
+    .section.active {
+      display: block;
+    }
+    .btn {
+      display: inline-block;
+      padding: 12px 24px;
+      margin: 5px;
+      border: none;
+      border-radius: 4px;
+      background: var(--primary-color);
+      color: #fff;
+      cursor: pointer;
+      transition: background 0.3s;
+      font-size: 1rem;
+    }
+    .btn:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+    .btn:hover:not(:disabled) {
+      background: var(--secondary-color);
+    }
+    .file-upload {
+      text-align: center;
+      margin: 1.5rem 0;
+    }
+    .file-upload label {
+      font-size: 1rem;
+      font-weight: 500;
+    }
+    .file-upload input[type="file"] {
+      margin-top: 0.5rem;
+      font-size: 1rem;
+    }
+    #results {
+      margin-top: 2rem;
+      padding: 1.5rem;
+      background: #fafafa;
+      border-radius: 4px;
+      text-align: center;
+      box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);
+    }
+    #chartContainer {
+      margin-top: 1rem;
+      width: 100%;
+      max-width: 500px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .loading {
+      animation: pulse 1s infinite alternate;
+    }
+    @keyframes pulse {
+      0% { opacity: 1; }
+      100% { opacity: 0.7; }
+    }
+    /* New clusters panel */
+    #clustersSection {
+      margin-top: 2rem;
+      padding: 1rem;
+      background: #eef5ff;
+      border-radius: 4px;
+    }
+    #clustersSection h2 {
+      margin-bottom: 0.5rem;
+      font-size: 1.1rem;
+      color: var(--primary-color);
+    }
+    #clusterCount {
+      margin-bottom: 0.5rem;
+      font-weight: 500;
+    }
+    #clusterList {
+      list-style: none;
+      padding-left: 0;
+    }
+    #clusterList li {
+      padding: 4px 0;
+      font-size: 0.95rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Audio Emotion Classifier</h1>
+      <p>Predict emotions from your voice in real-time</p>
+    </header>
+
+    <div class="tabs">
+      <button class="tab active" id="recordTab">Record Audio</button>
+      <button class="tab" id="uploadTab">Upload File</button>
+    </div>
+
+    <!-- Record Section -->
+    <div id="recordSection" class="section active">
+      <div style="text-align: center; margin-bottom: 20px;">
+        <button class="btn" id="recordBtn">Start Recording</button>
+        <button class="btn" id="stopBtn" disabled>Stop Recording</button>
+        <button class="btn" id="uploadBtn" disabled>Upload & Predict</button>
+      </div>
+      <audio id="audioPlayer" controls></audio>
+    </div>
+
+    <!-- Upload Section -->
+    <div id="uploadSection" class="section">
+      <div class="file-upload">
+        <label for="audioFileInput"><strong>Select an Audio File</strong></label><br>
+        <input type="file" id="audioFileInput" accept="audio/*" /><br>
+        <button class="btn" id="uploadFileBtn" disabled>Upload File & Predict</button>
+      </div>
+      <audio id="uploadedAudioPlayer" controls></audio>
+    </div>
+
+    <div id="results"></div>
+    <div id="chartContainer" style="display:none;">
+      <canvas id="probChart"></canvas>
+    </div>
+
+    <div id="clustersSection">
+      <h2>Detected Unknown Clusters</h2>
+      <p id="clusterCount">Total unknown clusters: 0</p>
+      <ul id="clusterList"></ul>
+    </div>
+  </div>
+
+  <script>
+    // 1. Globals
+    const inverseLabelMap = {
+      0: 'surprise', 1: 'angry', 2: 'neutral', 3: 'sad', 4: 'happy'
+    };
+    let probChart = null;
+    const seenClusters = [];
+
+    // 2. Tab Switching
+    const recordTab = document.getElementById("recordTab");
+    const uploadTab = document.getElementById("uploadTab");
+    const recordSection = document.getElementById("recordSection");
+    const uploadSection = document.getElementById("uploadSection");
+
+    recordTab.addEventListener("click", () => {
+      recordTab.classList.add("active");
+      uploadTab.classList.remove("active");
+      recordSection.classList.add("active");
+      uploadSection.classList.remove("active");
+    });
+    uploadTab.addEventListener("click", () => {
+      uploadTab.classList.add("active");
+      recordTab.classList.remove("active");
+      uploadSection.classList.add("active");
+      recordSection.classList.remove("active");
+    });
+
+    // 3. Recording Logic
+    const supportedTypes = [
+      'audio/webm;codecs=opus',
+      'audio/ogg;codecs=opus',
+      'audio/mp4;codecs=aac',
+      'audio/wav'
+    ];
+    let mimeType = supportedTypes.find(t => MediaRecorder.isTypeSupported(t)) || '';
+    let mediaRecorder, audioChunks = [];
+    const recordBtn = document.getElementById("recordBtn");
+    const stopBtn   = document.getElementById("stopBtn");
+    const uploadBtn = document.getElementById("uploadBtn");
+    const resultsDiv = document.getElementById("results");
+    const audioPlayer = document.getElementById("audioPlayer");
+
+    recordBtn.addEventListener("click", async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : {});
+        audioChunks = [];
+        mediaRecorder.ondataavailable = e => {
+          if (e.data.size > 0) audioChunks.push(e.data);
+        };
+        mediaRecorder.start();
+        recordBtn.disabled = true;
+        stopBtn.disabled   = false;
+        uploadBtn.disabled = true;
+        resultsDiv.classList.add("loading");
+        resultsDiv.innerHTML = "<p>Recording...</p>";
+      } catch (err) {
+        resultsDiv.classList.remove("loading");
+        resultsDiv.innerHTML = `<p style="color:red;">Microphone error: ${err.message}</p>`;
+      }
+    });
+
+    stopBtn.addEventListener("click", () => {
+      mediaRecorder.stop();
+      recordBtn.disabled = false;
+      stopBtn.disabled   = true;
+      uploadBtn.disabled = false;
+      resultsDiv.classList.remove("loading");
+      resultsDiv.innerHTML = "<p>Recording stopped. Ready to upload.</p>";
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(audioChunks, { type: mimeType || 'audio/wav' });
+        audioPlayer.src = URL.createObjectURL(blob);
+      };
+    });
+
+    uploadBtn.addEventListener("click", () => {
+      uploadBtn.disabled = true;
+      resultsDiv.classList.add("loading");
+      resultsDiv.innerHTML = "<p>Uploading & predicting...</p>";
+      const blob = new Blob(audioChunks, { type: 'audio/wav' });
+      sendToServer(blob);
+    });
+
+    // 4. File Upload Logic
+    const audioFileInput = document.getElementById("audioFileInput");
+    const uploadFileBtn  = document.getElementById("uploadFileBtn");
+    const uploadedAudioPlayer = document.getElementById("uploadedAudioPlayer");
+    let selectedFile = null;
+
+    audioFileInput.addEventListener("change", () => {
+      if (audioFileInput.files.length) {
+        selectedFile = audioFileInput.files[0];
+        uploadFileBtn.disabled = false;
+        uploadedAudioPlayer.src = URL.createObjectURL(selectedFile);
+      } else {
+        selectedFile = null;
+        uploadFileBtn.disabled = true;
+      }
+    });
+
+    uploadFileBtn.addEventListener("click", () => {
+      uploadFileBtn.disabled = true;
+      resultsDiv.classList.add("loading");
+      resultsDiv.innerHTML = "<p>Uploading & predicting...</p>";
+      sendToServer(selectedFile);
+    });
+
+    // 5. Send & Handle Response
+    async function sendToServer(blob) {
+      const formData = new FormData();
+      formData.append("file", blob, "audio.wav");
+      try {
+        const res = await fetch("http://localhost:5000/predict", {
+          method: "POST",
+          body: formData
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        resultsDiv.classList.remove("loading");
+        displayResults(data.prediction, data.probabilities);
+      } catch (err) {
+        resultsDiv.classList.remove("loading");
+        resultsDiv.innerHTML = `<p style="color:red;">Error: ${err.message}</p>`;
+      }
+    }
+
+    // 6. Display & Clusters (Option B)
+    function displayResults(rawPred, probabilities) {
+    const regex = /^unknown_(\d+)$/;              // capture digits after 'unknown_'
+    const match = rawPred.match(regex);
+    let status;
+
+    if (match) {
+      const idx = parseInt(match[1], 10);
+      if (!seenClusters.includes(idx)) {
+        seenClusters.push(idx);
+        status = `Added new cluster: <strong>unknown_${idx}</strong>`;
+      } else {
+        status = `Matched existing cluster: <strong>unknown_${idx}</strong>`;
+      }
+    } else {
+      status = `<strong>Known emotion:</strong> ${rawPred}`;
+    }
+
+    // Update the result panel
+    resultsDiv.innerHTML = `
+      <p>${status}</p>
+      <p><strong>Probabilities:</strong> ${probabilities.map(p => p.toFixed(3)).join(', ')}</p>
+    `;
+
+    updateClusterList();
+    plotProbabilities(probabilities);
+  }
+
+    function updateClusterList() {
+      const ul = document.getElementById("clusterList");
+      ul.innerHTML = "";
+      seenClusters.forEach(idx => {
+        const li = document.createElement("li");
+        li.textContent = `unknown_type_${idx}`;
+        ul.appendChild(li);
+      });
+      document.getElementById("clusterCount").textContent =
+        `Total unknown clusters: ${seenClusters.length}`;
+    }
+
+    function plotProbabilities(probabilities) {
+      document.getElementById("chartContainer").style.display = "block";
+      const ctx = document.getElementById("probChart").getContext("2d");
+      if (probChart) probChart.destroy();
+      probChart = new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels: Object.values(inverseLabelMap),
+          datasets: [{
+            label: "Emotion Probabilities",
+            data: probabilities,
+            backgroundColor: "rgba(54, 162, 235, 0.5)",
+            borderColor:   "rgba(54, 162, 235, 1)",
+            borderWidth: 1
+          }]
+        },
+        options: {
+          scales: { y: { beginAtZero: true, max: 1.0 } }
+        }
+      });
+    }
+  </script>
+</body>
+</html>
